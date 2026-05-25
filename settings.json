@@ -24,7 +24,8 @@
     },
     "anti-afk": {
       "enabled": true,
-      "sneak": true
+      "sneak": true,
+      "jump": true
     },
     "chat-messages": {
       "enabled": true,
@@ -34,10 +35,10 @@
         ""
       ]
     },
-    "chat-log": true,
+    "chat-log": false,
     "auto-reconnect": true,
-    "auto-reconnect-delay": 20,
-    "max-reconnect-delay": 120
+    "auto-reconnect-delay": 10,
+    "max-reconnect-delay": 30
   },
   "movement": {
     "enabled": true,
@@ -48,7 +49,7 @@
     },
     "look-around": {
       "enabled": true,
-      "interval": 100
+      "interval": 200
     },
     "random-jump": {
       "enabled": true,
