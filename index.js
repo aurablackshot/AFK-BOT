@@ -1890,11 +1890,11 @@ function chatModule(bot) {
 // Block breaking module - infinite block breaking while standing still.
 function blockBreakingModule(bot, mcData) {
   const targetBlock = config["block-breaking"]["target-block"] || "obsidian";
-  const searchRadius = config["block-breaking"]["search-radius"] || 8;
   const maxDistance = config["block-breaking"]["max-distance"] || 5;
   const breakDelay = config["block-breaking"]["break-delay"] || 200;
 
   let isDigging = false;
+  let lastNoTargetLog = 0;
 
   addInterval(async () => {
     if (!bot || !botState.connected || isDigging) return;
@@ -1903,25 +1903,24 @@ function blockBreakingModule(bot, mcData) {
     try {
       const isTargetBlock = (b) => {
         if (!b || !b.name || !b.position) return false;
+        if (["air", "cave_air", "void_air", "water", "lava"].includes(b.name)) {
+          return false;
+        }
+        if (b.diggable === false) return false;
         return targetBlock === "any" || b.name.includes(targetBlock);
       };
 
-      // Prefer the block the bot is already facing so it does not turn.
-      let block = bot.blockAtCursor(maxDistance);
-      if (block && !isTargetBlock(block)) block = null;
+      // Only mine the block under the crosshair so the bot stays still and forward-facing.
+      const block = bot.blockAtCursor(maxDistance);
 
-      // Fallback keeps older nearby-block behavior, but still does not move or rotate.
-      if (!block) block = bot.findBlock({
-        matching: (b) => {
-          if (!isTargetBlock(b)) return false;
-          // Check distance
-          const dist = bot.entity.position.distanceTo(b.position);
-          return dist <= maxDistance;
-        },
-        maxDistance: searchRadius,
-      });
-
-      if (!block) return;
+      if (!isTargetBlock(block)) {
+        const now = Date.now();
+        if (now - lastNoTargetLog > 5000) {
+          addLog("[BlockBreak] No breakable block in front of bot");
+          lastNoTargetLog = now;
+        }
+        return;
+      }
 
       isDigging = true;
 
