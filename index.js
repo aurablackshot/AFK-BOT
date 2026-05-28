@@ -1895,16 +1895,16 @@ function blockBreakingModule(bot, mcData) {
   const breakDelay = config["block-breaking"]["break-delay"] || 200;
 
   let isDigging = false;
-  let currentBlock = null;
 
   addInterval(async () => {
     if (!bot || !botState.connected || isDigging) return;
+    if (!bot.entity || !bot.entity.position) return;
 
     try {
       // Find obsidian blocks nearby
       const block = bot.findBlock({
         matching: (b) => {
-          if (!b || !b.name) return false;
+          if (!b || !b.name || !b.position) return false;
           // Only target the specified block type
           if (!b.name.includes(targetBlock)) return false;
           // Check distance
@@ -1914,49 +1914,39 @@ function blockBreakingModule(bot, mcData) {
         maxDistance: searchRadius,
       });
 
-      if (block) {
-        isDigging = true;
-        currentBlock = block;
+      if (!block) return;
 
+      isDigging = true;
+
+      try {
+        // Simple and safe looking direction
         try {
-          // Verify bot entity exists and has position
-          if (!bot.entity || !bot.entity.position) {
-            throw new Error("Bot entity or position unavailable");
-          }
-
-          // Look at the block
-          const targetPos = block.position.offset(0.5, 0.5, 0.5);
-          const botHeadPos = bot.entity.position.offset(0, 1.62, 0);
+          const vecToBlock = block.position.subtract(bot.entity.position);
+          const yaw = Math.atan2(-vecToBlock.x, -vecToBlock.z);
+          const dist = Math.sqrt(vecToBlock.x ** 2 + vecToBlock.z ** 2);
+          const pitch = Math.atan2(vecToBlock.y, dist);
           
-          if (!targetPos || !botHeadPos) {
-            throw new Error("Position calculation failed");
+          if (Number.isFinite(yaw) && Number.isFinite(pitch)) {
+            bot.look(yaw, pitch, false);
           }
+        } catch (lookErr) {
+          // Ignore look errors, still try to dig
+        }
 
-          const direction = targetPos.minus(botHeadPos);
-          
-          if (!direction) {
-            throw new Error("Direction calculation failed");
-          }
-
-          const yaw = Math.atan2(-direction.x, -direction.z);
-          const pitch = Math.atan2(direction.y, Math.sqrt(direction.x ** 2 + direction.z ** 2));
-          
-          bot.look(yaw, pitch, false);
-
-          // Dig the block
+        // Dig the block
+        if (block && block.position) {
           await bot.dig(block, true);
           addLog(`[BlockBreak] Broke block: ${block.name}`);
           botState.lastActivity = Date.now();
-        } catch (e) {
-          addLog(`[BlockBreak] Dig error: ${e.message}`);
-        } finally {
-          isDigging = false;
-          currentBlock = null;
         }
-
-        // Small delay before finding next block
-        await new Promise(r => setTimeout(r, breakDelay));
+      } catch (e) {
+        addLog(`[BlockBreak] Dig error: ${e.message}`);
+      } finally {
+        isDigging = false;
       }
+
+      // Small delay before finding next block
+      await new Promise(r => setTimeout(r, breakDelay));
     } catch (e) {
       isDigging = false;
       addLog(`[BlockBreak] Error: ${e.message}`);
