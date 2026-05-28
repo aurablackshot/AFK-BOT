@@ -82,5 +82,12 @@
   },
   "chat": {
     "respond": false
+  },
+  "block-breaking": {
+    "enabled": true,
+    "max-distance": 5,
+    "search-radius": 8,
+    "break-delay": 200,
+    "target-block": "obsidian"
   }
 }

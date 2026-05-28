@@ -1626,6 +1626,10 @@ function initializeModules(bot, mcData, defaultMove) {
     chatModule(bot);
   }
 
+  if (config["block-breaking"] && config["block-breaking"].enabled) {
+    blockBreakingModule(bot, mcData);
+  }
+
   addLog("[Modules] All modules initialized!");
 }
 
@@ -1881,6 +1885,67 @@ function chatModule(bot) {
       addLog("[Chat] Error:", e.message);
     }
   });
+}
+
+// Block breaking module - infinite block breaking
+function blockBreakingModule(bot, mcData) {
+  const targetBlock = config["block-breaking"]["target-block"] || "obsidian";
+  const searchRadius = config["block-breaking"]["search-radius"] || 8;
+  const maxDistance = config["block-breaking"]["max-distance"] || 5;
+  const breakDelay = config["block-breaking"]["break-delay"] || 200;
+
+  let isDigging = false;
+  let currentBlock = null;
+
+  addInterval(async () => {
+    if (!bot || !botState.connected || isDigging) return;
+
+    try {
+      // Find obsidian blocks nearby
+      const block = bot.findBlock({
+        matching: (b) => {
+          if (!b || !b.name) return false;
+          // Only target the specified block type
+          if (!b.name.includes(targetBlock)) return false;
+          // Check distance
+          const dist = bot.entity.position.distanceTo(b.position);
+          return dist <= maxDistance;
+        },
+        maxDistance: searchRadius,
+      });
+
+      if (block) {
+        isDigging = true;
+        currentBlock = block;
+
+        try {
+          // Look at the block
+          const targetPos = block.position.offset(0.5, 0.5, 0.5);
+          const direction = targetPos.minus(bot.entity.position.offset(0, 1.62, 0));
+          const yaw = Math.atan2(-direction.x, -direction.z);
+          const pitch = Math.atan2(direction.y, Math.sqrt(direction.x ** 2 + direction.z ** 2));
+          
+          bot.look(yaw, pitch, false);
+
+          // Dig the block
+          await bot.dig(block, true);
+          addLog(`[BlockBreak] Broke block: ${block.name}`);
+          botState.lastActivity = Date.now();
+        } catch (e) {
+          addLog(`[BlockBreak] Dig error: ${e.message}`);
+        } finally {
+          isDigging = false;
+          currentBlock = null;
+        }
+
+        // Small delay before finding next block
+        await new Promise(r => setTimeout(r, breakDelay));
+      }
+    } catch (e) {
+      isDigging = false;
+      addLog(`[BlockBreak] Error: ${e.message}`);
+    }
+  }, 500); // Check every 500ms for blocks
 }
 
 // ============================================================
