@@ -1887,7 +1887,7 @@ function chatModule(bot) {
   });
 }
 
-// Block breaking module - infinite block breaking
+// Block breaking module - infinite block breaking while standing still.
 function blockBreakingModule(bot, mcData) {
   const targetBlock = config["block-breaking"]["target-block"] || "obsidian";
   const searchRadius = config["block-breaking"]["search-radius"] || 8;
@@ -1901,12 +1901,19 @@ function blockBreakingModule(bot, mcData) {
     if (!bot.entity || !bot.entity.position) return;
 
     try {
-      // Find obsidian blocks nearby
-      const block = bot.findBlock({
+      const isTargetBlock = (b) => {
+        if (!b || !b.name || !b.position) return false;
+        return targetBlock === "any" || b.name.includes(targetBlock);
+      };
+
+      // Prefer the block the bot is already facing so it does not turn.
+      let block = bot.blockAtCursor(maxDistance);
+      if (block && !isTargetBlock(block)) block = null;
+
+      // Fallback keeps older nearby-block behavior, but still does not move or rotate.
+      if (!block) block = bot.findBlock({
         matching: (b) => {
-          if (!b || !b.name || !b.position) return false;
-          // Only target the specified block type
-          if (!b.name.includes(targetBlock)) return false;
+          if (!isTargetBlock(b)) return false;
           // Check distance
           const dist = bot.entity.position.distanceTo(b.position);
           return dist <= maxDistance;
@@ -1919,23 +1926,9 @@ function blockBreakingModule(bot, mcData) {
       isDigging = true;
 
       try {
-        // Simple and safe looking direction
-        try {
-          const vecToBlock = block.position.subtract(bot.entity.position);
-          const yaw = Math.atan2(-vecToBlock.x, -vecToBlock.z);
-          const dist = Math.sqrt(vecToBlock.x ** 2 + vecToBlock.z ** 2);
-          const pitch = Math.atan2(vecToBlock.y, dist);
-          
-          if (Number.isFinite(yaw) && Number.isFinite(pitch)) {
-            bot.look(yaw, pitch, false);
-          }
-        } catch (lookErr) {
-          // Ignore look errors, still try to dig
-        }
-
-        // Dig the block
+        // Dig without force-looking so the bot keeps facing forward.
         if (block && block.position) {
-          await bot.dig(block, true);
+          await bot.dig(block, false);
           addLog(`[BlockBreak] Broke block: ${block.name}`);
           botState.lastActivity = Date.now();
         }

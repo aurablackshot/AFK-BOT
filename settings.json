@@ -12,7 +12,7 @@
     "try-creative": false
   },
   "position": {
-    "enabled": true,
+    "enabled": false,
     "x": 0,
     "y": 100,
     "z": 0
@@ -23,9 +23,9 @@
       "password": "SoloPlayz"
     },
     "anti-afk": {
-      "enabled": true,
-      "sneak": true,
-      "jump": true
+      "enabled": false,
+      "sneak": false,
+      "jump": false
     },
     "chat-messages": {
       "enabled": true,
@@ -41,24 +41,24 @@
     "max-reconnect-delay": 30
   },
   "movement": {
-    "enabled": true,
+    "enabled": false,
     "circle-walk": {
-      "enabled": true,
+      "enabled": false,
       "radius": 4,
       "speed": 300
     },
     "look-around": {
-      "enabled": true,
+      "enabled": false,
       "interval": 200
     },
     "random-jump": {
-      "enabled": true,
+      "enabled": false,
       "interval": 100
     }
   },
   "modules": {
-    "avoidMobs": true,
-    "combat": true,
+    "avoidMobs": false,
+    "combat": false,
     "beds": false,
     "chat": true,
     "console-commands": true
@@ -88,6 +88,6 @@
     "max-distance": 5,
     "search-radius": 8,
     "break-delay": 200,
-    "target-block": "obsidian"
+    "target-block": "any"
   }
 }
