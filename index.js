@@ -1919,9 +1919,25 @@ function blockBreakingModule(bot, mcData) {
         currentBlock = block;
 
         try {
+          // Verify bot entity exists and has position
+          if (!bot.entity || !bot.entity.position) {
+            throw new Error("Bot entity or position unavailable");
+          }
+
           // Look at the block
           const targetPos = block.position.offset(0.5, 0.5, 0.5);
-          const direction = targetPos.minus(bot.entity.position.offset(0, 1.62, 0));
+          const botHeadPos = bot.entity.position.offset(0, 1.62, 0);
+          
+          if (!targetPos || !botHeadPos) {
+            throw new Error("Position calculation failed");
+          }
+
+          const direction = targetPos.minus(botHeadPos);
+          
+          if (!direction) {
+            throw new Error("Direction calculation failed");
+          }
+
           const yaw = Math.atan2(-direction.x, -direction.z);
           const pitch = Math.atan2(direction.y, Math.sqrt(direction.x ** 2 + direction.z ** 2));
           
