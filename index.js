@@ -1925,10 +1925,29 @@ function blockBreakingModule(bot, mcData) {
       isDigging = true;
 
       try {
+        if (typeof bot.canDigBlock === "function" && !bot.canDigBlock(block)) {
+          addLog(`[BlockBreak] Cannot dig ${block.name} from here`);
+          return;
+        }
+
         // Dig without force-looking so the bot keeps facing forward.
         if (block && block.position) {
           await bot.dig(block, false);
-          addLog(`[BlockBreak] Broke block: ${block.name}`);
+          await new Promise((r) => setTimeout(r, 250));
+
+          const currentBlock = bot.blockAt(block.position);
+          const stillSameBlock =
+            currentBlock &&
+            currentBlock.name === block.name &&
+            currentBlock.position.equals(block.position);
+
+          if (stillSameBlock) {
+            addLog(
+              `[BlockBreak] Server did not confirm break: ${block.name}. Check spawn protection, claims, adventure mode, or permissions.`,
+            );
+          } else {
+            addLog(`[BlockBreak] Broke block: ${block.name}`);
+          }
           botState.lastActivity = Date.now();
         }
       } catch (e) {
