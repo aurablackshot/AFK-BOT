@@ -1935,6 +1935,11 @@ function blockBreakingModule(bot, mcData) {
       const block = bot.blockAtCursor(maxDistance);
 
       if (!isTargetBlock(block)) {
+        try {
+          bot.swingArm();
+          botState.lastActivity = Date.now();
+        } catch (e) {}
+
         const now = Date.now();
         if (now - lastNoTargetLog > 5000) {
           addLog("[BlockBreak] No breakable block in front of bot");
