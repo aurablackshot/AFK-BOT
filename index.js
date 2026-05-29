@@ -1538,6 +1538,27 @@ function initializeModules(bot, mcData, defaultMove) {
       120000 + Math.floor(Math.random() * 180000),
     );
 
+    if (config.utils["anti-afk"].jump) {
+      addInterval(() => {
+        if (
+          !bot ||
+          !botState.connected ||
+          typeof bot.setControlState !== "function"
+        )
+          return;
+        try {
+          bot.setControlState("jump", true);
+          setTimeout(() => {
+            if (bot && typeof bot.setControlState === "function")
+              bot.setControlState("jump", false);
+          }, 250);
+          botState.lastActivity = Date.now();
+        } catch (e) {
+          addLog("[AntiAFK] Jump error:", e.message);
+        }
+      }, 2000);
+    }
+
     // FIX: micro-walk only when circle-walk is NOT running, to avoid interrupting pathfinder
     if (
       !(
@@ -1555,22 +1576,22 @@ function initializeModules(bot, mcData, defaultMove) {
           )
             return;
           try {
-            const yaw = Math.random() * Math.PI * 2;
-            bot.look(yaw, 0, true);
             bot.setControlState("forward", true);
-            setTimeout(
-              () => {
+            setTimeout(() => {
+              if (!bot || typeof bot.setControlState !== "function") return;
+              bot.setControlState("forward", false);
+              bot.setControlState("back", true);
+              setTimeout(() => {
                 if (bot && typeof bot.setControlState === "function")
-                  bot.setControlState("forward", false);
-              },
-              500 + Math.floor(Math.random() * 1500),
-            );
+                  bot.setControlState("back", false);
+              }, 700);
+            }, 700);
             botState.lastActivity = Date.now();
           } catch (e) {
             addLog("[AntiAFK] Walk error:", e.message);
           }
         },
-        120000 + Math.floor(Math.random() * 360000),
+        10000,
       );
     }
 
