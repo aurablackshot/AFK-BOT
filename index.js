@@ -1206,6 +1206,8 @@ function reconnectImmediately(reason) {
     reconnectTimeoutId = null;
   }
 
+  scheduleReconnect(0);
+
   if (bot) {
     try {
       bot.end();
@@ -1213,8 +1215,6 @@ function reconnectImmediately(reason) {
       addLog(`[Bot] Error ending bot for immediate reconnect: ${e.message}`);
     }
   }
-
-  scheduleReconnect(0);
 }
 
 function createBot() {
@@ -1582,6 +1582,27 @@ function initializeModules(bot, mcData, defaultMove) {
       120000 + Math.floor(Math.random() * 180000),
     );
 
+    if (config.utils["anti-afk"].jump) {
+      addInterval(() => {
+        if (
+          !bot ||
+          !botState.connected ||
+          typeof bot.setControlState !== "function"
+        )
+          return;
+        try {
+          bot.setControlState("jump", true);
+          setTimeout(() => {
+            if (bot && typeof bot.setControlState === "function")
+              bot.setControlState("jump", false);
+          }, 250);
+          botState.lastActivity = Date.now();
+        } catch (e) {
+          addLog("[AntiAFK] Jump error:", e.message);
+        }
+      }, 2000);
+    }
+
     // FIX: micro-walk only when circle-walk is NOT running, to avoid interrupting pathfinder
     if (
       !(
@@ -1599,22 +1620,22 @@ function initializeModules(bot, mcData, defaultMove) {
           )
             return;
           try {
-            const yaw = Math.random() * Math.PI * 2;
-            bot.look(yaw, 0, true);
             bot.setControlState("forward", true);
-            setTimeout(
-              () => {
+            setTimeout(() => {
+              if (!bot || typeof bot.setControlState !== "function") return;
+              bot.setControlState("forward", false);
+              bot.setControlState("back", true);
+              setTimeout(() => {
                 if (bot && typeof bot.setControlState === "function")
-                  bot.setControlState("forward", false);
-              },
-              500 + Math.floor(Math.random() * 1500),
-            );
+                  bot.setControlState("back", false);
+              }, 700);
+            }, 700);
             botState.lastActivity = Date.now();
           } catch (e) {
             addLog("[AntiAFK] Walk error:", e.message);
           }
         },
-        120000 + Math.floor(Math.random() * 360000),
+        10000,
       );
     }
 
@@ -1668,6 +1689,10 @@ function initializeModules(bot, mcData, defaultMove) {
   }
   if (config.modules.chat) {
     chatModule(bot);
+  }
+
+  if (config["block-breaking"] && config["block-breaking"].enabled) {
+    blockBreakingModule(bot, mcData);
   }
 
   addLog("[Modules] All modules initialized!");
@@ -1925,6 +1950,90 @@ function chatModule(bot) {
       addLog("[Chat] Error:", e.message);
     }
   });
+}
+
+// Block breaking module - infinite block breaking while standing still.
+function blockBreakingModule(bot, mcData) {
+  const targetBlock = config["block-breaking"]["target-block"] || "obsidian";
+  const maxDistance = config["block-breaking"]["max-distance"] || 5;
+  const breakDelay = config["block-breaking"]["break-delay"] || 200;
+
+  let isDigging = false;
+  let lastNoTargetLog = 0;
+
+  addInterval(async () => {
+    if (!bot || !botState.connected || isDigging) return;
+    if (!bot.entity || !bot.entity.position) return;
+
+    try {
+      const isTargetBlock = (b) => {
+        if (!b || !b.name || !b.position) return false;
+        if (["air", "cave_air", "void_air", "water", "lava"].includes(b.name)) {
+          return false;
+        }
+        if (b.diggable === false) return false;
+        return targetBlock === "any" || b.name.includes(targetBlock);
+      };
+
+      // Only mine the block under the crosshair so the bot stays still and forward-facing.
+      const block = bot.blockAtCursor(maxDistance);
+
+      if (!isTargetBlock(block)) {
+        try {
+          bot.swingArm();
+          botState.lastActivity = Date.now();
+        } catch (e) {}
+
+        const now = Date.now();
+        if (now - lastNoTargetLog > 5000) {
+          addLog("[BlockBreak] No breakable block in front of bot");
+          lastNoTargetLog = now;
+        }
+        reconnectImmediately("No breakable block in front of bot");
+        return;
+      }
+
+      isDigging = true;
+
+      try {
+        if (typeof bot.canDigBlock === "function" && !bot.canDigBlock(block)) {
+          addLog(`[BlockBreak] Cannot dig ${block.name} from here`);
+          return;
+        }
+
+        // Dig without force-looking so the bot keeps facing forward.
+        if (block && block.position) {
+          await bot.dig(block, false);
+          await new Promise((r) => setTimeout(r, 250));
+
+          const currentBlock = bot.blockAt(block.position);
+          const stillSameBlock =
+            currentBlock &&
+            currentBlock.name === block.name &&
+            currentBlock.position.equals(block.position);
+
+          if (stillSameBlock) {
+            addLog(
+              `[BlockBreak] Server did not confirm break: ${block.name}. Check spawn protection, claims, adventure mode, or permissions.`,
+            );
+          } else {
+            addLog(`[BlockBreak] Broke block: ${block.name}`);
+          }
+          botState.lastActivity = Date.now();
+        }
+      } catch (e) {
+        addLog(`[BlockBreak] Dig error: ${e.message}`);
+      } finally {
+        isDigging = false;
+      }
+
+      // Small delay before finding next block
+      await new Promise(r => setTimeout(r, breakDelay));
+    } catch (e) {
+      isDigging = false;
+      addLog(`[BlockBreak] Error: ${e.message}`);
+    }
+  }, 500); // Check every 500ms for blocks
 }
 
 // ============================================================
