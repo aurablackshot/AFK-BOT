@@ -23,7 +23,6 @@ let botState = {
   reconnectAttempts: 0,
   startTime: Date.now(),
   errors: [],
-  wasThrottled: false,
 };
 
 // Health check endpoint for monitoring
@@ -1167,15 +1166,6 @@ function addInterval(callback, delay) {
 }
 
 function getReconnectDelay() {
-  if (botState.wasThrottled) {
-    botState.wasThrottled = false;
-    const throttleDelay = 60000 + Math.floor(Math.random() * 60000);
-    addLog(
-      `[Bot] Throttle detected - using extended delay: ${throttleDelay / 1000}s`,
-    );
-    return throttleDelay;
-  }
-
   // FIX: read auto-reconnect-delay from settings as base delay
   const baseDelay = config.utils["auto-reconnect-delay"] || 3000;
   const maxDelay = config.utils["max-reconnect-delay"] || 30000;
@@ -1281,6 +1271,8 @@ function createBot() {
       if (spawnHandled) return;
       spawnHandled = true;
 
+      const spawnedAfterReconnect = botState.reconnectAttempts > 0;
+
       clearBotTimeouts();
       botState.connected = true;
       botState.lastActivity = Date.now();
@@ -1310,6 +1302,14 @@ function createBot() {
       defaultMove.fallDamageCost = 1000;
 
       initializeModules(bot, mcData, defaultMove);
+
+      if (spawnedAfterReconnect) {
+        setTimeout(() => {
+          if (!bot || !botState.connected) return;
+          bot.chat("/tp @s -2.490 94 -7.524");
+          addLog("[Position] Reconnect teleport requested: -2.490 94 -7.524");
+        }, 1500);
+      }
 
       // Attempt creative mode (only works if bot has OP and enabled in settings)
       setTimeout(() => {
@@ -1356,10 +1356,7 @@ function createBot() {
         reasonStr.includes("wait before reconnect") ||
         reasonStr.includes("too fast")
       ) {
-        addLog(
-          "[Bot] Throttle kick detected - will use extended reconnect delay",
-        );
-        botState.wasThrottled = true;
+        addLog("[Bot] Throttle kick detected - using normal reconnect delay");
       }
 
       if (
