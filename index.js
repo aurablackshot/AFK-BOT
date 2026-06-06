@@ -1299,13 +1299,16 @@ function createBot() {
       defaultMove.liquidCost = 1000;
       defaultMove.fallDamageCost = 1000;
 
-      initializeModules(bot, mcData, defaultMove);
-
       setTimeout(() => {
         if (!bot || !botState.connected) return;
         bot.chat("/warp cat");
         addLog("[Warp] Sent /warp cat after joining server");
       }, 1500);
+
+      setTimeout(() => {
+        if (!bot || !botState.connected) return;
+        initializeModules(bot, mcData, defaultMove);
+      }, 3500);
 
       // Attempt creative mode (only works if bot has OP and enabled in settings)
       setTimeout(() => {
@@ -1953,9 +1956,10 @@ function blockBreakingModule(bot, mcData) {
 
   let isDigging = false;
   let lastNoTargetLog = 0;
+  let noTargetReconnectPending = false;
 
   addInterval(async () => {
-    if (!bot || !botState.connected || isDigging) return;
+    if (!bot || !botState.connected || isDigging || noTargetReconnectPending) return;
     if (!bot.entity || !bot.entity.position) return;
 
     try {
@@ -1982,7 +1986,14 @@ function blockBreakingModule(bot, mcData) {
           addLog("[BlockBreak] No breakable block in front of bot");
           lastNoTargetLog = now;
         }
-        reconnectImmediately("No breakable block in front of bot");
+        noTargetReconnectPending = true;
+        bot.chat("/warp cat");
+        addLog(
+          "[Warp] No breakable block found - sent /warp cat before reconnect",
+        );
+        setTimeout(() => {
+          reconnectImmediately("No breakable block in front of bot");
+        }, 1500);
         return;
       }
 
