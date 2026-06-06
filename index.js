@@ -1271,8 +1271,6 @@ function createBot() {
       if (spawnHandled) return;
       spawnHandled = true;
 
-      const spawnedAfterReconnect = botState.reconnectAttempts > 0;
-
       clearBotTimeouts();
       botState.connected = true;
       botState.lastActivity = Date.now();
@@ -1303,13 +1301,11 @@ function createBot() {
 
       initializeModules(bot, mcData, defaultMove);
 
-      if (spawnedAfterReconnect) {
-        setTimeout(() => {
-          if (!bot || !botState.connected) return;
-          bot.chat("/tp @s -2.490 94 -7.524");
-          addLog("[Position] Reconnect teleport requested: -2.490 94 -7.524");
-        }, 1500);
-      }
+      setTimeout(() => {
+        if (!bot || !botState.connected) return;
+        bot.chat("/warp cat");
+        addLog("[Warp] Sent /warp cat after joining server");
+      }, 1500);
 
       // Attempt creative mode (only works if bot has OP and enabled in settings)
       setTimeout(() => {
