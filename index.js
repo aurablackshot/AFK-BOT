@@ -25,6 +25,106 @@ let botState = {
   errors: [],
 };
 
+const primaryAccount = config["bot-account"];
+let activeAccount = primaryAccount;
+let banDetected = false;
+let tempBot = null;
+let unbanInProgress = false;
+let unbanTargetUsername = null;
+
+const BAN_TRIGGERS = [
+  "you are banned from this server",
+  "you are banned",
+  "temporary ban",
+  "permanently banned",
+  "ban",
+];
+
+function isBanReason(reason) {
+  if (!reason) return false;
+  const str = String(reason).toLowerCase();
+  return BAN_TRIGGERS.some((trigger) => str.includes(trigger));
+}
+
+function shouldUseUnbanBot(reason) {
+  return Boolean(config["unban-account"] && isBanReason(reason));
+}
+
+function createUnbanBot(targetUsername) {
+  if (unbanInProgress) return false;
+  if (!config["unban-account"]) return false;
+  if (!targetUsername) return false;
+
+  const unbanAccount = config["unban-account"];
+  unbanInProgress = true;
+  banDetected = true;
+  unbanTargetUsername = targetUsername;
+
+  addLog(
+    `[Unban] Creating temporary unban bot ${unbanAccount.username} to pardon ${targetUsername}`,
+  );
+
+  try {
+    tempBot = mineflayer.createBot({
+      username: unbanAccount.username,
+      password: unbanAccount.password || undefined,
+      auth: unbanAccount.type,
+      host: config.server.ip,
+      port: config.server.port,
+      version:
+        config.server.version && config.server.version.trim() !== ""
+          ? config.server.version
+          : false,
+      hideErrors: false,
+      checkTimeoutInterval: 600000,
+    });
+
+    tempBot.once("spawn", () => {
+      addLog(`[Unban] Spawned as ${unbanAccount.username}`);
+      setTimeout(() => {
+        if (!tempBot) return;
+        tempBot.chat(`/pardon ${targetUsername}`);
+        addLog(`[Unban] Sent /pardon ${targetUsername}`);
+        setTimeout(() => {
+          if (tempBot) {
+            tempBot.end();
+          }
+        }, 2000);
+      }, 1500);
+    });
+
+    tempBot.on("kicked", (reason) => {
+      const kickReason =
+        typeof reason === "object" ? JSON.stringify(reason) : reason;
+      addLog(`[Unban] Kicked: ${kickReason}`);
+    });
+
+    tempBot.on("end", (reason) => {
+      addLog(`[Unban] Disconnected: ${reason || "Unknown reason"}`);
+      unbanInProgress = false;
+      tempBot = null;
+      addLog(
+        `[Unban] Finished pardon attempt for ${targetUsername}. Reconnecting primary account...`,
+      );
+      activeAccount = primaryAccount;
+      banDetected = false;
+      unbanTargetUsername = null;
+      scheduleReconnect(5000);
+    });
+
+    tempBot.on("error", (err) => {
+      addLog(`[Unban] Error: ${err.message}`);
+    });
+
+    return true;
+  } catch (err) {
+    addLog(`[Unban] Failed to create bot: ${err.message}`);
+    unbanInProgress = false;
+    tempBot = null;
+    return false;
+  }
+}
+
 // Health check endpoint for monitoring
 app.get('/', (req, res) => {
   res.send(`
@@ -1225,26 +1325,29 @@ function createBot() {
     bot = null;
   }
 
-  addLog(`[Bot] Creating bot instance...`);
-  addLog(`[Bot] Connecting to ${config.server.ip}:${config.server.port}`);
+const connectAccount = activeAccount || config["bot-account"];
+    addLog(`[Bot] Creating bot instance...`);
+    addLog(
+      `[Bot] Connecting to ${config.server.ip}:${config.server.port} as ${connectAccount.username}`,
+    );
 
-  try {
-    // FIX: use version:false to auto-detect server version so the bot can join any server.
-    // If the user explicitly sets a version in settings.json it is still respected.
-    const botVersion =
-      config.server.version && config.server.version.trim() !== ""
-        ? config.server.version
-        : false;
-    bot = mineflayer.createBot({
-      username: config["bot-account"].username,
-      password: config["bot-account"].password || undefined,
-      auth: config["bot-account"].type,
-      host: config.server.ip,
-      port: config.server.port,
-      version: botVersion,
-      hideErrors: false,
-      checkTimeoutInterval: 600000,
-    });
+    try {
+      // FIX: use version:false to auto-detect server version so the bot can join any server.
+      // If the user explicitly sets a version in settings.json it is still respected.
+      const botVersion =
+        config.server.version && config.server.version.trim() !== ""
+          ? config.server.version
+          : false;
+      bot = mineflayer.createBot({
+        username: connectAccount.username,
+        password: connectAccount.password || undefined,
+        auth: connectAccount.type,
+        host: config.server.ip,
+        port: config.server.port,
+        version: botVersion,
+        hideErrors: false,
+        checkTimeoutInterval: 600000,
+      });
 
     bot.loadPlugin(pathfinder);
 
@@ -1349,6 +1452,15 @@ function createBot() {
       });
       clearAllIntervals();
 
+      if (shouldUseUnbanBot(kickReason)) {
+        const target = activeAccount.username;
+        if (createUnbanBot(target)) {
+          addLog(
+            "[Bot] Ban detected. Started temporary unban bot to pardon the primary account.",
+          );
+        }
+      }
+
       const reasonStr = String(kickReason).toLowerCase();
       if (
         reasonStr.includes("throttl") ||
@@ -1384,6 +1496,13 @@ function createBot() {
           `[-] **Disconnected**: ${reason || "Unknown"}`,
           0xf87171,
         );
+      }
+
+      if (unbanInProgress) {
+        addLog(
+          "[Bot] Ban handling active; waiting for temporary unban bot before reconnecting.",
+        );
+        return;
       }
 
       // ALWAYS reconnect — bot must never leave the server

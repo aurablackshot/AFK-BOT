@@ -5,6 +5,11 @@
     "password": "",
     "type": "offline"
   },
+  "unban-account": {
+    "username": "unban",
+    "password": "",
+    "type": "offline"
+  },
   "server": {
     "ip": "Servertest64536.aternos.me",
     "port": 32521,
@@ -28,7 +33,7 @@
       "jump": true
     },
     "chat-messages": {
-      "enabled": true,
+      "enabled": false,
       "repeat": true,
       "repeat-delay": 120,
       "messages": [
