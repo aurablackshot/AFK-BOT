@@ -40,6 +40,10 @@
         ""
       ]
     },
+    "auto-feed": {
+      "enabled": true,
+      "interval-minutes": 5
+    },
     "chat-log": false,
     "auto-reconnect": true,
     "auto-reconnect-delay": 40000,

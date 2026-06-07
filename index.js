@@ -1624,6 +1624,22 @@ function initializeModules(bot, mcData, defaultMove) {
     }
   }
 
+  // ---------- AUTO FEED ----------
+  if (config.utils["auto-feed"] && config.utils["auto-feed"].enabled) {
+    const feedInterval =
+      (config.utils["auto-feed"]["interval-minutes"] || 5) * 60 * 1000;
+    addInterval(() => {
+      if (!bot || !botState.connected) return;
+      try {
+        bot.chat("/feed");
+        botState.lastActivity = Date.now();
+        addLog("[AutoFeed] Sent /feed");
+      } catch (e) {
+        addLog("[AutoFeed] Error:", e.message);
+      }
+    }, feedInterval);
+  }
+
   // ---------- MOVE TO POSITION ----------
   // FIX: only use position goal if circle-walk is NOT enabled (they fight over pathfinder)
   if (
