@@ -14,7 +14,7 @@ const https = require("https");
 // ============================================================
 const app = express();
 app.use(express.json());
-const PORT = process.env.PORT || 5000;
+const PORT = Number(process.env.PORT || 5000);
 
 // Bot state tracking
 let botState = {
@@ -1173,6 +1173,19 @@ server.on("error", (err) => {
     addLog(`[Server] HTTP server error: ${err.message} `);
   }
 });
+
+function shutdown(signal) {
+  addLog(`[System] ${signal} received - shutting down cleanly.`);
+  try {
+    if (bot) bot.end(`${signal} shutdown`);
+    if (tempBot) tempBot.end(`${signal} shutdown`);
+  } catch (err) {
+    addLog(`[System] Bot shutdown error: ${err.message}`);
+  }
+
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 5000).unref();
+}
 
 // FIX: only one definition of formatUptime
 function formatUptime(seconds) {
@@ -2352,13 +2365,8 @@ process.on("unhandledRejection", (reason) => {
   }
 });
 
-process.on("SIGTERM", () => {
-  addLog("[System] SIGTERM received — ignoring, bot will stay alive.");
-});
-
-process.on("SIGINT", () => {
-  addLog("[System] SIGINT received — ignoring, bot will stay alive.");
-});
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 
 // =============================
 //===============================

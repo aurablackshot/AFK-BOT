@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: minecraft-afk-bot
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /ping
+    envVars:
+      - key: NODE_VERSION
+        value: 20
