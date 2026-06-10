@@ -1539,14 +1539,13 @@ const connectAccount = activeAccount || config["bot-account"];
 }
 
 function scheduleReconnect(delayOverride = null) {
-  clearBotTimeouts();
-
   // FIX: don't stack reconnect if already waiting
   if (isReconnecting) {
     addLog("[Bot] Reconnect already scheduled, skipping duplicate.");
     return;
   }
 
+  clearBotTimeouts();
   isReconnecting = true;
   botState.reconnectAttempts++;
 
