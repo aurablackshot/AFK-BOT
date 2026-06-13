@@ -42,7 +42,7 @@
     },
     "auto-feed": {
       "enabled": true,
-      "interval-minutes": 60
+      "interval-minutes": 30
     },
     "chat-log": false,
     "auto-reconnect": true,
