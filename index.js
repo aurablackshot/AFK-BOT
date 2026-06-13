@@ -2138,9 +2138,26 @@ function blockBreakingModule(bot, mcData) {
         addLog(
           "[Warp] No breakable block found - sent /warp cat before reconnect",
         );
-        setTimeout(() => {
+        // Schedule a delayed reconnect with exponential backoff instead of
+        // forcing an immediate reconnect which can cause rapid reconnect loops
+        // if the environment hasn't changed yet.
+        try {
+          const delay = getReconnectDelay();
+          addLog(
+            `[Bot] Scheduling reconnect in ${Math.round(delay / 1000)}s due to no breakable block`,
+          );
+          // end the current bot connection to ensure a clean restart
+          try {
+            if (bot) bot.end();
+          } catch (e) {
+            addLog(`[Bot] Error ending bot before scheduled reconnect: ${e.message}`);
+          }
+          scheduleReconnect(delay);
+        } catch (e) {
+          addLog(`[BlockBreak] Failed to schedule reconnect: ${e.message}`);
+          // Fallback to immediate reconnect if scheduling fails
           reconnectImmediately("No breakable block in front of bot");
-        }, 1500);
+        }
         return;
       }
 
