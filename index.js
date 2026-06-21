@@ -31,6 +31,9 @@ let banDetected = false;
 let tempBot = null;
 let unbanInProgress = false;
 let unbanTargetUsername = null;
+let unbanRetryTimeoutId = null;
+let unbanAttemptCount = 0;
+let unbanPardonSent = false;
 
 const BAN_TRIGGERS = [
   "you are banned from this server",
@@ -50,71 +53,125 @@ function shouldUseUnbanBot(reason) {
   return Boolean(config["unban-account"] && isBanReason(reason));
 }
 
-function createUnbanBot(targetUsername) {
+function isThrottleReason(reason) {
+  const str = String(reason || "").toLowerCase();
+  return (
+    str.includes("throttl") ||
+    str.includes("wait before reconnect") ||
+    str.includes("too fast")
+  );
+}
+
+function clearUnbanRetryTimeout() {
+  if (unbanRetryTimeoutId) {
+    clearTimeout(unbanRetryTimeoutId);
+    unbanRetryTimeoutId = null;
+  }
+}
+
+function finishUnbanAttempt(targetUsername, succeeded, reason) {
+  clearUnbanRetryTimeout();
+  unbanInProgress = false;
+  tempBot = null;
+  activeAccount = primaryAccount;
+
+  if (succeeded) {
+    addLog(
+      `[Unban] Finished pardon attempt for ${targetUsername}. Reconnecting primary account...`,
+    );
+    banDetected = false;
+    unbanTargetUsername = null;
+    unbanAttemptCount = 0;
+    scheduleReconnect(5000);
+    return;
+  }
+
+  const retryDelay = isThrottleReason(reason) ? 30000 : 10000;
+  addLog(
+    `[Unban] Pardon was not sent (${reason || "unknown reason"}). Retrying unban in ${retryDelay / 1000}s...`,
+  );
+  unbanRetryTimeoutId = setTimeout(() => {
+    unbanRetryTimeoutId = null;
+    createUnbanBot(targetUsername, { isRetry: true });
+  }, retryDelay);
+}
+
+function createUnbanBot(targetUsername, options = {}) {
   if (unbanInProgress) return false;
   if (!config["unban-account"]) return false;
   if (!targetUsername) return false;
 
   const unbanAccount = config["unban-account"];
+  clearUnbanRetryTimeout();
   unbanInProgress = true;
   banDetected = true;
   unbanTargetUsername = targetUsername;
+  unbanPardonSent = false;
+  unbanAttemptCount = options.isRetry ? unbanAttemptCount + 1 : 1;
 
   addLog(
-    `[Unban] Creating temporary unban bot ${unbanAccount.username} to pardon ${targetUsername}`,
+    `[Unban] Creating temporary unban bot ${unbanAccount.username} to pardon ${targetUsername} (attempt #${unbanAttemptCount})`,
   );
 
   try {
-    tempBot = mineflayer.createBot({
-      username: unbanAccount.username,
-      password: unbanAccount.password || undefined,
-      auth: unbanAccount.type,
-      host: config.server.ip,
-      port: config.server.port,
-      version:
-        config.server.version && config.server.version.trim() !== ""
-          ? config.server.version
-          : false,
-      hideErrors: false,
-      checkTimeoutInterval: 600000,
-    });
+    const startDelay = options.isRetry ? 0 : 10000;
+    setTimeout(() => {
+      if (!unbanInProgress || unbanTargetUsername !== targetUsername) return;
 
-    tempBot.once("spawn", () => {
-      addLog(`[Unban] Spawned as ${unbanAccount.username}`);
-      setTimeout(() => {
-        if (!tempBot) return;
-        tempBot.chat(`/pardon ${targetUsername}`);
-        addLog(`[Unban] Sent /pardon ${targetUsername}`);
+      try {
+        tempBot = mineflayer.createBot({
+          username: unbanAccount.username,
+          password: unbanAccount.password || undefined,
+          auth: unbanAccount.type,
+          host: config.server.ip,
+          port: config.server.port,
+          version:
+            config.server.version && config.server.version.trim() !== ""
+              ? config.server.version
+              : false,
+          hideErrors: false,
+          checkTimeoutInterval: 600000,
+        });
+      } catch (err) {
+        addLog(`[Unban] Failed to create bot: ${err.message}`);
+        finishUnbanAttempt(targetUsername, false, err.message);
+        return;
+      }
+
+      let lastKickReason = null;
+
+      tempBot.once("spawn", () => {
+        addLog(`[Unban] Spawned as ${unbanAccount.username}`);
         setTimeout(() => {
-          if (tempBot) {
-            tempBot.end();
-          }
-        }, 2000);
-      }, 1500);
-    });
+          if (!tempBot) return;
+          tempBot.chat(`/pardon ${targetUsername}`);
+          unbanPardonSent = true;
+          addLog(`[Unban] Sent /pardon ${targetUsername}`);
+          setTimeout(() => {
+            if (tempBot) {
+              tempBot.end();
+            }
+          }, 2000);
+        }, 1500);
+      });
 
-    tempBot.on("kicked", (reason) => {
-      const kickReason =
-        typeof reason === "object" ? JSON.stringify(reason) : reason;
-      addLog(`[Unban] Kicked: ${kickReason}`);
-    });
+      tempBot.on("kicked", (reason) => {
+        const kickReason =
+          typeof reason === "object" ? JSON.stringify(reason) : reason;
+        lastKickReason = kickReason;
+        addLog(`[Unban] Kicked: ${kickReason}`);
+      });
 
-    tempBot.on("end", (reason) => {
-      addLog(`[Unban] Disconnected: ${reason || "Unknown reason"}`);
-      unbanInProgress = false;
-      tempBot = null;
-      addLog(
-        `[Unban] Finished pardon attempt for ${targetUsername}. Reconnecting primary account...`,
-      );
-      activeAccount = primaryAccount;
-      banDetected = false;
-      unbanTargetUsername = null;
-      scheduleReconnect(5000);
-    });
+      tempBot.on("end", (reason) => {
+        const endReason = lastKickReason || reason || "Unknown reason";
+        addLog(`[Unban] Disconnected: ${reason || "Unknown reason"}`);
+        finishUnbanAttempt(targetUsername, unbanPardonSent, endReason);
+      });
 
-    tempBot.on("error", (err) => {
-      addLog(`[Unban] Error: ${err.message}`);
-    });
+      tempBot.on("error", (err) => {
+        addLog(`[Unban] Error: ${err.message}`);
+      });
+    }, startDelay);
 
     return true;
   } catch (err) {
@@ -1177,6 +1234,7 @@ server.on("error", (err) => {
 function shutdown(signal) {
   addLog(`[System] ${signal} received - shutting down cleanly.`);
   try {
+    clearUnbanRetryTimeout();
     if (bot) bot.end(`${signal} shutdown`);
     if (tempBot) tempBot.end(`${signal} shutdown`);
   } catch (err) {
