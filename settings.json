@@ -11,8 +11,8 @@
     "type": "offline"
   },
   "server": {
-    "ip": "Servertest64536.aternos.me",
-    "port": 32521,
+    "ip": "",
+    "port": ,
     "version": "1.21.11",
     "try-creative": false
   },
